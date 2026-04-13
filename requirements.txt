@@ -1,0 +1,28 @@
+# ── Core PyTorch ──────────────────────────────────────────────────────────────
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# ── Audio I/O & Processing ───────────────────────────────────────────────────
+librosa>=0.10.1
+soundfile>=0.12.1
+audioread>=3.0.1
+soxr>=0.3.7           # high-quality resampling backend for librosa
+
+# ── Scientific Stack ─────────────────────────────────────────────────────────
+numpy>=1.24.0
+scipy>=1.11.0
+pandas>=2.0.0
+
+# ── Deep Learning / HuggingFace ───────────────────────────────────────────────
+transformers>=4.35.0
+huggingface-hub>=0.19.0
+accelerate>=0.24.0
+timm>=0.9.7            # required by AST model internals
+einops>=0.7.0          # required by AST model internals
+
+# ── Denoising ─────────────────────────────────────────────────────────────────
+demucs>=4.0.0          # htdemucs deep source-separation model
+noisereduce>=3.0.0     # spectral gating fallback
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+tqdm>=4.65.0
