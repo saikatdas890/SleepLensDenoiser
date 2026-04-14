@@ -243,7 +243,7 @@ def train_one_epoch(
 
     for input_values, labels in tqdm(loader, desc="  train", leave=False, unit="batch"):
         input_values = input_values.to(device)
-        labels       = torch.tensor(labels, dtype=torch.long).to(device)
+        labels       = torch.as_tensor(labels, dtype=torch.long).to(device)
 
         optimizer.zero_grad()
         logits = model(input_values=input_values).logits
@@ -272,7 +272,7 @@ def evaluate(
 
     for input_values, labels in tqdm(loader, desc="  eval ", leave=False, unit="batch"):
         input_values = input_values.to(device)
-        labels_t     = torch.tensor(labels, dtype=torch.long).to(device)
+        labels_t     = torch.as_tensor(labels, dtype=torch.long).to(device)
 
         logits = model(input_values=input_values).logits
         total_loss += criterion(logits, labels_t).item()
