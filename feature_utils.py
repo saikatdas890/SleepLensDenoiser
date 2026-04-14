@@ -228,7 +228,7 @@ def extract_features(
         fmax=float(sr // 2),
         power=2.0,
     )
-    log_mel = librosa.power_to_db(mel_spec, ref=np.max).astype(np.float32)  # (n_mels, T)
+    log_mel = librosa.power_to_db(mel_spec, ref=1.0).astype(np.float32)  # (n_mels, T)
 
     # ── Align all arrays to the shortest T ───────────────────────────────────
     T = min(

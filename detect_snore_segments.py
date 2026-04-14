@@ -102,39 +102,43 @@ def group_snore_frames(
         logger.info("[GroupFrames] No frames above threshold %.2f.", threshold)
         return []
 
-    # Convert index ranges to time tuples (start_s, end_s, mean_confidence)
-    timed: List[Tuple[float, float, float]] = [
+    # Convert index ranges to (start_s, end_s, prob_sum, n_frames).
+    # Storing sum + count allows correct weighted-mean confidence after merging,
+    # avoiding the double-averaging bug that mean-of-means introduces.
+    timed: List[Tuple[float, float, float, int]] = [
         (
             float(frame_times[s]),
             float(frame_times[e]),
-            float(frame_probs[s : e + 1].mean()),
+            float(frame_probs[s : e + 1].sum()),
+            e - s + 1,
         )
         for s, e in raw_events
     ]
 
     # ── Step 3: Merge nearby events ───────────────────────────────────────────
-    merged: List[Tuple[float, float, List[float]]] = []
-    cur_start, cur_end, cur_confs = timed[0][0], timed[0][1], [timed[0][2]]
+    merged: List[Tuple[float, float, float, int]] = []
+    cur_start, cur_end, cur_sum, cur_n = timed[0]
 
-    for start, end, conf in timed[1:]:
+    for start, end, prob_sum, n in timed[1:]:
         gap = start - cur_end
         if gap <= merge_gap_s:
-            cur_end = end
-            cur_confs.append(conf)
+            cur_end  = end
+            cur_sum += prob_sum
+            cur_n   += n
         else:
-            merged.append((cur_start, cur_end, cur_confs))
-            cur_start, cur_end, cur_confs = start, end, [conf]
+            merged.append((cur_start, cur_end, cur_sum, cur_n))
+            cur_start, cur_end, cur_sum, cur_n = start, end, prob_sum, n
 
-    merged.append((cur_start, cur_end, cur_confs))
+    merged.append((cur_start, cur_end, cur_sum, cur_n))
 
     # ── Step 4: Pad boundaries ────────────────────────────────────────────────
     padded: List[Tuple[float, float, float]] = [
         (
             max(0.0, s - padding_s),
             min(duration, e + padding_s),
-            float(np.mean(confs)),
+            cur_sum / max(cur_n, 1),          # true frame-weighted mean
         )
-        for s, e, confs in merged
+        for s, e, cur_sum, cur_n in merged
     ]
 
     # ── Step 5: Filter by minimum duration ───────────────────────────────────

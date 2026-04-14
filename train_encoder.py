@@ -278,7 +278,7 @@ def evaluate(
         total_loss += criterion(logits, labels_t).item()
 
         all_preds.extend(logits.argmax(1).cpu().tolist())
-        all_labels.extend(labels if isinstance(labels, list) else labels.tolist())
+        all_labels.extend(labels_t.cpu().tolist())
 
     acc = float(np.mean(np.array(all_preds) == np.array(all_labels)))
     return total_loss / len(loader), acc, all_preds, all_labels
