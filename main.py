@@ -40,6 +40,10 @@ Usage
     python main.py --input recording.wav --output output/ \\
                    --threshold 0.25 --min-duration 0.3 --merge-gap 0.5
 
+    # Use your own fine-tuned encoder instead of the generic AST model:
+    python main.py --input recording.wav --output output/ \\
+                   --encoder-model models/snore_encoder_best.pt
+
 Output layout
 -------------
 .. code-block::
@@ -121,6 +125,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     detect = p.add_argument_group("Stage 3–4 — Detection")
+    detect.add_argument(
+        "--encoder-model", default=None,
+        metavar="PATH",
+        help=(
+            "Path to a fine-tuned encoder checkpoint produced by train_encoder.py "
+            "(e.g. models/snore_encoder_best.pt).  "
+            "When supplied this replaces the generic AudioSet AST with your "
+            "personalised model — more accurate for your specific recording setup."
+        ),
+    )
     detect.add_argument(
         "--threshold", type=float, default=0.30,
         help="Snore probability threshold (lower = more sensitive).",
@@ -295,35 +309,77 @@ def main(argv: Optional[list] = None) -> int:
     # ════════════════════════════════════════════════════════════════════════
     # Stage 3: Load Snore Detection Model
     # ════════════════════════════════════════════════════════════════════════
-    _stage("Stage 3 — Loading Snore Detection Model (AST/AudioSet)")
+    using_personal_encoder = bool(args.encoder_model)
 
-    from snore_model import SnoreDetector
+    if using_personal_encoder:
+        _stage("Stage 3 — Loading Personal Snore Encoder (fine-tuned)")
+        from inference import load_encoder
 
-    t0 = time.perf_counter()
-    detector = SnoreDetector(
-        device=device,
-        window_size_s=args.window_size,
-        stride_s=args.window_stride,
-        batch_size=args.batch_size,
-    )
-    logger.info("Model loaded in %s", _elapsed(t0))
+        encoder_path = Path(args.encoder_model)
+        if not encoder_path.exists():
+            logger.error(
+                "Encoder checkpoint not found: %s\n"
+                "Train it first:  python train_encoder.py --data-dir data/",
+                encoder_path,
+            )
+            return 1
+
+        t0 = time.perf_counter()
+        encoder_model, encoder_fx, encoder_cfg = load_encoder(str(encoder_path), device)
+        logger.info("Personal encoder loaded in %s", _elapsed(t0))
+    else:
+        _stage("Stage 3 — Loading Snore Detection Model (AST/AudioSet zero-shot)")
+        from snore_model import SnoreDetector
+
+        t0 = time.perf_counter()
+        detector = SnoreDetector(
+            device=device,
+            window_size_s=args.window_size,
+            stride_s=args.window_stride,
+            batch_size=args.batch_size,
+        )
+        logger.info("Model loaded in %s", _elapsed(t0))
 
     # ════════════════════════════════════════════════════════════════════════
     # Stage 4: Detect Snore Segments
     # ════════════════════════════════════════════════════════════════════════
     _stage("Stage 4 — Snore Event Detection")
 
-    from detect_snore_segments import detect_snore_segments
-
     t0 = time.perf_counter()
-    segments = detect_snore_segments(
-        audio_path=denoised_path,
-        detector=detector,
-        threshold=args.threshold,
-        min_duration_s=args.min_duration,
-        merge_gap_s=args.merge_gap,
-        padding_s=args.padding,
-    )
+
+    if using_personal_encoder:
+        # ── Personal encoder path ─────────────────────────────────────────
+        from inference import predict_file, group_events
+
+        times, snore_probs = predict_file(
+            denoised_path,
+            encoder_model,
+            encoder_fx,
+            device,
+            window_s=encoder_cfg.get("window_s", 2.0),
+            stride_s=args.window_stride,
+            batch_size=args.batch_size,
+        )
+        segments = group_events(
+            times, snore_probs,
+            threshold=args.threshold,
+            min_duration_s=args.min_duration,
+            merge_gap_s=args.merge_gap,
+            padding_s=args.padding,
+        )
+    else:
+        # ── Generic AST path ──────────────────────────────────────────────
+        from detect_snore_segments import detect_snore_segments
+
+        segments = detect_snore_segments(
+            audio_path=denoised_path,
+            detector=detector,
+            threshold=args.threshold,
+            min_duration_s=args.min_duration,
+            merge_gap_s=args.merge_gap,
+            padding_s=args.padding,
+        )
+
     logger.info(
         "Stage 4 complete in %s — %d event(s) detected",
         _elapsed(t0), len(segments),
